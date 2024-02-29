@@ -1,33 +1,33 @@
-import { GitHub } from "@actions/github/lib/utils";
+import { GitHub } from '@actions/github/lib/utils'
 
-import { DeploymentContext } from "./context";
+import { DeploymentContext } from './context'
 
 /**
  * Mark all deployments within this environment as `inactive`.
  */
 async function deactivateEnvironment(
   github: InstanceType<typeof GitHub>,
-  { log, owner, repo, coreArgs: { environment } }: DeploymentContext
+  { log, owner, repo, coreArgs: { environment } }: DeploymentContext,
 ) {
   const deployments = await github.rest.repos.listDeployments({
     owner,
     repo,
     environment,
     per_page: 100,
-  });
-  const existing = deployments.data.length;
+  })
+  const existing = deployments.data.length
   if (existing === 0) {
-    log.info(`found no existing deployments for env ${environment}`);
-    return;
+    log.info(`found no existing deployments for env ${environment}`)
+    return
   }
 
-  const deactivatedState = "inactive";
-  log.info(`${environment}: found ${existing} existing deployments for env`);
+  const deactivatedState = 'inactive'
+  log.info(`${environment}: found ${existing} existing deployments for env`)
   for (let i = 0; i < existing; i++) {
-    const deployment = deployments.data[i];
+    const deployment = deployments.data[i]
     log.info(
-      `${environment}.${deployment.id}: setting deployment (${deployment.sha}) state to "${deactivatedState}"`
-    );
+      `${environment}.${deployment.id}: setting deployment (${deployment.sha}) state to "${deactivatedState}"`,
+    )
 
     // Check existing status, to avoid setting it to the already current value.
     // See https://github.com/bobheadxi/deployments/issues/92.
@@ -36,7 +36,7 @@ async function deactivateEnvironment(
       repo,
       deployment_id: deployment.id,
       per_page: 1, // we only need the latest status
-    });
+    })
 
     // If a previous status exists, and it is inactive, then we don't need to update it.
     if (
@@ -44,9 +44,9 @@ async function deactivateEnvironment(
       getStatusRes.data[0].state === deactivatedState
     ) {
       log.debug(
-        `${environment}.${deployment.id} is already ${deactivatedState}; skipping.`
-      );
-      continue;
+        `${environment}.${deployment.id} is already ${deactivatedState}; skipping.`,
+      )
+      continue
     }
 
     // Otherwise, set the deployment to "inactive".
@@ -55,15 +55,15 @@ async function deactivateEnvironment(
       repo,
       deployment_id: deployment.id,
       state: deactivatedState,
-    });
+    })
     log.debug(`${environment}.${deployment.id} updated`, {
       state: createStatusRes.data.state,
       url: createStatusRes.data.url,
-    });
+    })
   }
 
-  log.info(`${environment}: ${existing} deployments updated`);
-  return deployments;
+  log.info(`${environment}: ${existing} deployments updated`)
+  return deployments
 }
 
-export default deactivateEnvironment;
+export default deactivateEnvironment

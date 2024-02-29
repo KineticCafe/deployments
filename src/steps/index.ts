@@ -1,104 +1,102 @@
-import { setOutput, error } from "@actions/core";
-import { GitHub } from "@actions/github/lib/utils";
+import { setOutput } from '@actions/core'
+import type { GitHub } from '@actions/github/lib/utils'
 
-import { DeploymentContext } from "../lib/context";
-import deactivateEnvironment from "../lib/deactivate";
-import deleteEnvironment from "../lib/delete";
+import type { DeploymentContext } from '../lib/context'
+import deactivateEnvironment from '../lib/deactivate'
+import deleteEnvironment from '../lib/delete'
 import {
   getBooleanInput,
   getOptionalInput,
   getRequiredInput,
-} from "../lib/input";
+  parseOptionalRequiredContexts,
+} from '../lib/input'
 
-import createStart, { StartArgs } from "./start";
-import createFinish, { FinishArgs } from "./finish";
+import createFinish, { type FinishArgs } from './finish'
+import createStart, { type StartArgs } from './start'
 
 export enum Step {
-  Start = "start",
-  Finish = "finish",
-  DeactivateEnv = "deactivate-env",
-  DeleteEnv = "delete-env",
+  Start = 'start',
+  Finish = 'finish',
+  DeactivateEnv = 'deactivate-env',
+  DeleteEnv = 'delete-env',
 }
 
 export async function run(
   step: Step,
   github: InstanceType<typeof GitHub>,
-  context: DeploymentContext
+  context: DeploymentContext,
 ) {
-  const { log, coreArgs } = context;
+  const { log, coreArgs } = context
 
   try {
     switch (step) {
       case Step.Start:
         {
-          const rawPayload = getOptionalInput("payload");
-          let payload: { [key: string]: any } | undefined = undefined;
+          const rawPayload = getOptionalInput('payload')
+          let payload: Record<string, unknown> | undefined = undefined
+
           if (rawPayload) {
-            payload = JSON.parse(rawPayload);
+            payload = JSON.parse(rawPayload)
           }
+
           const stepArgs: StartArgs = {
-            deploymentID: getOptionalInput("deployment_id"),
-            override: getBooleanInput("override", false), // default to false on start
+            deploymentID: getOptionalInput('deployment_id'),
+            override: getBooleanInput('override', false), // default to false on start
+            autoMerge: getBooleanInput('auto_merge', false),
+            requiredContexts: parseOptionalRequiredContexts('required_contexts'),
             payload,
-          };
-          log.debug(`'${step}' arguments`, {
-            stepArgs,
-            coreArgs,
-          });
-          const { deploymentID, statusID } = await createStart(
-            github,
-            context,
-            stepArgs
-          );
-          setOutput("deployment_id", deploymentID);
-          setOutput("status_id", statusID);
+          }
+
+          log.debug(`'${step}' arguments`, { stepArgs, coreArgs })
+
+          const { deploymentID, statusID } = await createStart(github, context, stepArgs)
+          setOutput('deployment_id', deploymentID)
+          setOutput('status_id', statusID)
           // set for ease of reference
-          setOutput("env", coreArgs.environment);
+          setOutput('env', coreArgs.environment)
         }
-        break;
+        break
 
       case Step.Finish:
         {
           const stepArgs: FinishArgs = {
-            status: getRequiredInput("status").toLowerCase(),
-            deploymentID: getRequiredInput("deployment_id"),
-            envURL: getOptionalInput("env_url"),
-            override: getBooleanInput("override", true), // default to true on finish
-            autoInactive: getBooleanInput("auto_inactive", false),
-          };
+            status: getRequiredInput('status').toLowerCase(),
+            deploymentID: getRequiredInput('deployment_id'),
+            envURL: getOptionalInput('env_url'),
+            override: getBooleanInput('override', true), // default to true on finish
+            autoInactive: getBooleanInput('auto_inactive', false),
+          }
           log.debug(`'${step}' arguments`, {
             stepArgs,
             coreArgs,
-          });
-          const { statusID } = (await createFinish(
-            github,
-            context,
-            stepArgs
-          )) || { statusID: -1 };
-          setOutput("status_id", statusID);
+          })
+          const { statusID } = (await createFinish(github, context, stepArgs)) || {
+            statusID: -1,
+          }
+          setOutput('status_id', statusID)
         }
-        break;
+        break
 
       case Step.DeactivateEnv:
         {
-          log.debug(`'${step}' arguments`, { coreArgs });
+          log.debug(`'${step}' arguments`, { coreArgs })
 
-          await deactivateEnvironment(github, context);
+          await deactivateEnvironment(github, context)
         }
-        break;
+        break
 
       case Step.DeleteEnv:
         {
-          log.debug(`'${step}' arguments`, { coreArgs });
+          log.debug(`'${step}' arguments`, { coreArgs })
 
-          await deleteEnvironment(github, context);
+          await deleteEnvironment(github, context)
         }
-        break;
+        break
 
       default:
-        log.fail(`unknown step type ${step}`);
+        log.fail(`unknown step type ${step}`)
     }
   } catch (error) {
-    log.fail(`unexpected error encountered: ${error}`);
+    log.fail(`unexpected error encountered: ${error}`)
   }
 }
