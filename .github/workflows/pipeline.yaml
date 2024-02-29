@@ -2,165 +2,163 @@ name: pipeline
 
 on:
   push:
-    branches:
-      - '**'
-  pull_request: {}
+  pull_request:
 
 jobs:
   checks:
     runs-on: ubuntu-latest
     steps:
-      # Environment
-      - uses: actions/checkout@v3
-      - uses: actions/setup-node@v3
-        with:
-          node-version: '18'
+      - uses: actions/checkout@v4
 
-      # Dependencies
-      # https://docs.github.com/en/actions/guides/caching-dependencies-to-speed-up-workflows#example-using-the-cache-action
-      - name: Cache node modules
-        uses: actions/cache@v2
-        env:
-          cache-name: cache-node-modules
+      - uses: pnpm/action-setup@v3
         with:
-          path: ~/.npm # npm cache files are stored in `~/.npm` on Linux/macOS
-          key: ${{ runner.os }}-build-${{ env.cache-name }}-${{ hashFiles('**/package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-build-${{ env.cache-name }}-
-            ${{ runner.os }}-build-
-            ${{ runner.os }}-
-      - run: npm install
+          version: 8
 
-      # Checks
-      - run: npm run prettier:check
-      - run: npm run build:check
+      - uses: actions/setup-node@v4.0.2
+        with:
+          node-version: 20.x
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: |
+          pnpm check
+          pnpm build
+          pnpm package
+
+      - run: |
+          if [[ "$(git diff --ignore-space-at-eol dist/ | wc -l)" -gt 0 ]]; then
+            echo "Detected uncommitted changes after build. See status below:"
+            git diff --text --ignore-space-at-eol dist/
+            exit 1
+          fi
+        id: diff
+        if: ${{ success() }}
+
+      - uses: actions/upload-artifact@v4
+        if: ${{ failure() && steps.diff.conclusion == 'failure' }}
+        with:
+          name: dist
+          path: dist/
 
   integration-tests:
     runs-on: ubuntu-latest
     needs: checks
     strategy:
       matrix:
-        scenario: [ 'success', 'failure' ]
+        scenario: ['success', 'failure']
         include:
-        - scenario: 'success'
-          exit_code: 0
-        - scenario: 'failure'
-          exit_code: 1
+          - scenario: 'success'
+            exit_code: 0
+          - scenario: 'failure'
+            exit_code: 1
       fail-fast: false
     steps:
-    - uses: actions/checkout@v3
-    - uses: actions/setup-node@v3
-      with:
-        node-version: '18'
+      - uses: actions/checkout@v4
 
-    # Dependencies
-    # https://docs.github.com/en/actions/guides/caching-dependencies-to-speed-up-workflows#example-using-the-cache-action
-    - name: Cache node modules
-      uses: actions/cache@v2
-      env:
-        cache-name: cache-node-modules
-      with:
-        path: ~/.npm # npm cache files are stored in `~/.npm` on Linux/macOS
-        key: ${{ runner.os }}-build-${{ env.cache-name }}-${{ hashFiles('**/package-lock.json') }}
-        restore-keys: |
-          ${{ runner.os }}-build-${{ env.cache-name }}-
-          ${{ runner.os }}-build-
-          ${{ runner.os }}-
-    - run: npm install
-    - run: npm run build
+      - uses: pnpm/action-setup@v3
+        with:
+          version: 8
 
-    - name: extract branch name
-      id: get_branch
-      shell: bash
-      run: echo "##[set-output name=branch;]$(echo ${GITHUB_REF#refs/heads/} | tr / -)"
+      - uses: actions/setup-node@v4.0.2
+        with:
+          node-version: 20.x
 
-    - name: start deployment
-      uses: ./
-      id: deployment
-      with:
-        step: start
-        token: ${{ secrets.GITHUB_TOKEN }}
-        env: integration-test-${{ steps.get_branch.outputs.branch }}-${{ matrix.scenario }}
-        desc: 'Deployment starting!'
-        debug: true
+      - run: pnpm install --frozen-lockfile
 
-    - name: parse repo name and owner
-      id: parse_repo
-      shell: bash
-      # outputs: owner, name
-      run: |
-        echo "owner=$(cut -d "/" -f 1 <<<"${{ github.repository }}")" >> $GITHUB_OUTPUT
-        echo "name=$(cut -d "/" -f 2 <<<"${{ github.repository }}")" >> $GITHUB_OUTPUT
+      - run: |
+          pnpm run build
+          pnpm run package
 
+      - name: extract branch name
+        id: get_branch
+        run: |
+          echo "branch=$(${GITHUB_REF#refs/heads/} | tr / -)" >>"$GITHUB_OUTPUT"
 
-    - name: assert deployment in progress
-      uses: actions/github-script@v6
-      env:
-        deployment_id: ${{ steps.deployment.outputs.deployment_id }}
-        status_id: ${{ steps.deployment.outputs.status_id }}
-      with:
-        script: |
-          const { deployment_id, status_id } = process.env;
-          if (!deployment_id) {
-            throw new Error("deployment_id not set");
-          }
-          if (!status_id) {
-            throw new Error("status_id not set");
-          }
-          const res = await github.rest.repos.getDeploymentStatus({
-            owner: "${{ steps.parse_repo.outputs.owner }}",
-            repo: "${{ steps.parse_repo.outputs.name }}",
-            deployment_id: parseInt(deployment_id, 10),
-            status_id: parseInt(status_id, 10),
-          });
-          console.log(res)
-          if (res.data.state !== "in_progress") {
-            throw new Error(`unexpected status ${res.data.state}`);
-          }
+      - name: start deployment
+        uses: ./
+        id: deployment
+        with:
+          step: start
+          token: ${{ secrets.GITHUB_TOKEN }}
+          env: integration-test-${{ steps.get_branch.outputs.branch }}-${{ matrix.scenario }}
+          desc: 'Deployment starting!'
+          debug: true
 
-    - name: set deployment status to ${{ matrix.scenario }}
-      uses: ./
-      id: finish
-      with:
-        step: finish
-        token: ${{ secrets.GITHUB_TOKEN }}
-        status: ${{ matrix.scenario }}
-        deployment_id: ${{ steps.deployment.outputs.deployment_id }}
-        env: ${{ steps.deployment.outputs.env }}
-        desc: 'Deployment complete'
-        debug: true
+      - name: parse repo name and owner
+        id: parse_repo
+        run: |
+          echo "owner=$(cut -d "/" -f 1 <<<"${{ github.repository }}")" >>"$GITHUB_OUTPUT"
+          echo "name=$(cut -d "/" -f 2 <<<"${{ github.repository }}")" >>"$GITHUB_OUTPUT"
 
-    - name: assert deployment complete
-      uses: actions/github-script@v6
-      env:
-        deployment_id: ${{ steps.deployment.outputs.deployment_id }}
-        status_id: ${{ steps.finish.outputs.status_id }}
-        expected_state: ${{ matrix.scenario }}
-      with:
-        script: |
-          const { deployment_id, status_id, expected_state } = process.env;
-          if (!deployment_id) {
-            throw new Error("deployment_id not set");
-          }
-          if (!status_id) {
-            throw new Error("status_id not set");
-          }
-          const res = await github.rest.repos.getDeploymentStatus({
-            owner: "${{ steps.parse_repo.outputs.owner }}",
-            repo: "${{ steps.parse_repo.outputs.name }}",
-            deployment_id: parseInt(deployment_id, 10),
-            status_id: parseInt(status_id, 10),
-          });
-          console.log(res)
-          if (res.data.state !== expected_state) {
-            throw new Error(`unexpected status ${res.data.state}`);
-          }
+      - name: assert deployment in progress
+        uses: actions/github-script@v7
+        env:
+          deployment_id: ${{ steps.deployment.outputs.deployment_id }}
+          status_id: ${{ steps.deployment.outputs.status_id }}
+        with:
+          script: |
+            const { deployment_id, status_id } = process.env;
+            if (!deployment_id) {
+              throw new Error("deployment_id not set");
+            }
+            if (!status_id) {
+              throw new Error("status_id not set");
+            }
+            const res = await github.rest.repos.getDeploymentStatus({
+              owner: "${{ steps.parse_repo.outputs.owner }}",
+              repo: "${{ steps.parse_repo.outputs.name }}",
+              deployment_id: parseInt(deployment_id, 10),
+              status_id: parseInt(status_id, 10),
+            });
+            console.log(res)
+            if (res.data.state !== "in_progress") {
+              throw new Error(`unexpected status ${res.data.state}`);
+            }
 
-    - name: mark environment as deactivated
-      uses: ./
-      with:
-        step: deactivate-env
-        token: ${{ secrets.GITHUB_TOKEN }}
-        env: ${{ steps.deployment.outputs.env }}
-        desc: Environment was pruned
-        debug: true
+      - name: set deployment status to ${{ matrix.scenario }}
+        uses: ./
+        id: finish
+        with:
+          step: finish
+          token: ${{ secrets.GITHUB_TOKEN }}
+          status: ${{ matrix.scenario }}
+          deployment_id: ${{ steps.deployment.outputs.deployment_id }}
+          env: ${{ steps.deployment.outputs.env }}
+          desc: 'Deployment complete'
+          debug: true
+
+      - name: assert deployment complete
+        uses: actions/github-script@v7
+        env:
+          deployment_id: ${{ steps.deployment.outputs.deployment_id }}
+          status_id: ${{ steps.finish.outputs.status_id }}
+          expected_state: ${{ matrix.scenario }}
+        with:
+          script: |
+            const { deployment_id, status_id, expected_state } = process.env;
+            if (!deployment_id) {
+              throw new Error("deployment_id not set");
+            }
+            if (!status_id) {
+              throw new Error("status_id not set");
+            }
+            const res = await github.rest.repos.getDeploymentStatus({
+              owner: "${{ steps.parse_repo.outputs.owner }}",
+              repo: "${{ steps.parse_repo.outputs.name }}",
+              deployment_id: parseInt(deployment_id, 10),
+              status_id: parseInt(status_id, 10),
+            });
+            console.log(res)
+            if (res.data.state !== expected_state) {
+              throw new Error(`unexpected status ${res.data.state}`);
+            }
+
+      - name: mark environment as deactivated
+        uses: ./
+        with:
+          step: deactivate-env
+          token: ${{ secrets.GITHUB_TOKEN }}
+          env: ${{ steps.deployment.outputs.env }}
+          desc: Environment was pruned
+          debug: true

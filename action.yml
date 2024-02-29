@@ -1,36 +1,46 @@
-name: GitHub Deployments
+name: GitHub Deployment Status Management
 description: GitHub action for working painlessly with deployment statuses.
-author: bobheadxi
+author: KineticCafe
 branding:
   icon: bookmark
   color: yellow
 runs:
-  using: node16
+  using: node20
   main: dist/index.js
 
 inputs:
   step:
     required: true
     description: One of 'start', 'finish', 'deactivate-env', or 'delete-env'
+
   token:
     required: true
     description: GitHub access token
     default: ${{ github.token }}
+
   env:
     required: true
-    description: The name of the deployment environment in GitHub to create statuses in.
+    description: |
+      The name of the deployment environment in GitHub to create statuses in.
+
   repository:
     required: false
-    description: Set status for a different repository, using the format `$owner/$repository` (optional, defaults to the current repository)
+    description: |
+      Set status for a different repository, using the format
+      `$owner/$repository` (optional, defaults to the current repository)
+
   logs:
     required: false
     description: URL to logs
+
   desc:
     required: false
     description: Description to set in status
+
   ref:
     required: false
     description: The git ref to use for the deploy, defaults to `github.ref`
+
   task:
     required: false
     description: The task to assign to the deployment, defaults to 'deploy'
@@ -42,20 +52,63 @@ inputs:
 
   deployment_id:
     required: false
-    description: The deployment ID to update (if specified during `start`, the deployment will be updated instead of creating a new one)
+    description: |
+      The deployment ID to update (if specified during `start`, the deployment
+      will be updated instead of creating a new one)
+
   env_url:
     required: false
     description: The environment URL (for `finish` only)
+
   status:
     required: false
     description: The deployment status (for `finish` only)
+
   override:
     required: false
-    description: Whether to manually mark existing deployments of this environment as inactive (for `start` and `finish` only)
+    description: |
+      Whether to manually mark existing deployments of this environment as
+      inactive (for `start` and `finish` only)
+
   auto_inactive:
     required: false
-    description: Whether to mark existing deployments as inactive if a deployment succeeds (for `finish` only)
+    description: |
+      Whether to mark existing deployments as inactive if a deployment succeeds
+      (for `finish` only)
     default: 'false'
+
   payload:
     required: false
-    description: JSON-formatted dictionary with extra information about the deployment (for `start` only)
+    description: |
+      JSON-formatted dictionary with extra information about the deployment (for
+      `start` only)
+
+  auto_merge:
+    required: false
+    description: |
+      Attempts to automatically merge the default branch into the requested ref,
+      if it's behind the default branch. Defaults to `false`
+    default: 'false'
+
+  required_contexts:
+    required: false
+    description: |
+      The status contexts to verify against commit status checks, separated by
+      commas. If this argument is `"*"`, all checks are run. If this argument is
+      omitted, or if it's set to `""`, checking is bypassed entirely. Defaults
+      to `""`.
+    default: ''
+
+outputs:
+  deployment_id:
+    description: |
+      The ID of the created GitHub deployment. This is only available from the
+      `start` step.
+  status_id:
+    description: |
+      The ID of the created GitHub deployment status. This is only available
+      from the `start` step.
+  env:
+    description: |
+      The name of the configured environment. This is only available from the
+      `start` step.

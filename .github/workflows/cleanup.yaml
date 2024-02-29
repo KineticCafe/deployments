@@ -2,47 +2,42 @@ name: cleanup
 
 on:
   pull_request:
-    types: [ closed ]
+    types: [closed]
 
 jobs:
   delete-env:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        scenario: [ 'success', 'failure' ]
+        scenario: ['success', 'failure']
     steps:
-    - uses: actions/checkout@v3
-    - uses: actions/setup-node@v3
-      with:
-        node-version: '18'
-      
-    # Dependencies
-    # https://docs.github.com/en/actions/guides/caching-dependencies-to-speed-up-workflows#example-using-the-cache-action
-    - name: Cache node modules
-      uses: actions/cache@v2
-      env:
-        cache-name: cache-node-modules
-      with:
-        path: ~/.npm # npm cache files are stored in `~/.npm` on Linux/macOS
-        key: ${{ runner.os }}-build-${{ env.cache-name }}-${{ hashFiles('**/package-lock.json') }}
-        restore-keys: |
-          ${{ runner.os }}-build-${{ env.cache-name }}-
-          ${{ runner.os }}-build-
-          ${{ runner.os }}-
-    - run: npm install
-    - run: npm run build
+      - uses: actions/checkout@v4
 
-    - name: extract branch name
-      id: get_branch
-      shell: bash
-      env:
-        PR_HEAD: ${{ github.head_ref }}
-      run: echo "##[set-output name=branch;]$(echo ${PR_HEAD#refs/heads/} | tr / -)"
+      - uses: pnpm/action-setup@v3
+        with:
+          version: 8
 
-    - name: delete environment
-      uses: ./
-      with:
-        step: delete-env
-        token: ${{ secrets.GITHUB_TOKEN }}
-        env: integration-test-${{ steps.get_branch.outputs.branch }}-${{ matrix.scenario }}
-        debug: true
+      - uses: actions/setup-node@v4.0.2
+        with:
+          node-version: 20.x
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: |
+          pnpm run build
+          pnpm run package
+
+      - name: extract branch name
+        id: get_branch
+        run: |
+          echo "branch=$(${PR_HEAD#refs/heads/} | tr / -)" >>"$GITHUB_OUTPUT"
+        env:
+          PR_HEAD: ${{ github.head_ref }}
+
+      - name: delete environment
+        uses: ./
+        with:
+          env: integration-test-${{ steps.get_branch.outputs.branch }}-${{ matrix.scenario }}
+          step: delete-env
+          debug: true

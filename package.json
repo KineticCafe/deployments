@@ -1,31 +1,42 @@
 {
-  "name": "@bobheadxi/deployments",
-  "version": "0.0.0",
-  "private": true,
+  "name": "@kineticcafe/deployments",
+  "version": "1.5.0",
+  "author": "Kinetic Commerce",
   "description": "GitHub Action for working painlessly with deployment statuses",
-  "main": "dist/index.js",
+  "main": "lib/main.js",
   "scripts": {
-    "prettier": "prettier src --write",
-    "prettier:check": "prettier src --check",
-    "build": "ncc build src/main.ts --out dist --minify --source-map --license LICENSES",
-    "build:check": "npm run build && git diff --quiet dist",
-    "test": "npm run prettier:check & npm run build:check"
+    "build": "tsc",
+    "check": "biome check .",
+    "check:fix": "biome check --apply .",
+    "format": "biome format --write .",
+    "format:check": "biome format .",
+    "lint": "biome lint .",
+    "lint:fix": "biome lint --apply .",
+    "package": "ncc build --source-map --license licenses.txt --minify",
+    "all": "pnpm run build && pnpm run check && pnpm run package"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/bobheadxi/deployments.git"
+    "url": "git+https://github.com/KineticCafe/deployments.git"
   },
-  "author": "bobheadxi",
+  "keywords": ["github-actions", "github-deployment"],
+  "bugs": {
+    "url": "https://github.com/KineticCafe/deployments/issues"
+  },
+  "homepage": "https://github.com/KineticCafe/deployments#readme",
   "license": "MIT",
   "dependencies": {
-    "@actions/core": "1.10.0",
-    "@actions/github": "5.1.0"
+    "@actions/core": "^1.10.1",
+    "@actions/github": "^6.0.0"
   },
   "devDependencies": {
-    "@vercel/ncc": "0.36.0",
-    "@types/js-yaml": "4.0.5",
-    "@types/node": "18.11.18",
-    "prettier": "2.8.3",
-    "typescript": "4.9.4"
-  }
+    "@biomejs/biome": "^1.6.0",
+    "@octokit/types": "^12.6.0",
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^20.11.25",
+    "@vercel/ncc": "^0.38.1",
+    "js-yaml": "^4.1.0",
+    "typescript": "^5.4.2"
+  },
+  "packageManager": "pnpm@8.7.6"
 }
